@@ -2420,6 +2420,8 @@ void           AdjointHorizAnalysis::GradientJDragGradient(Element* element,Vect
 		case 11:
 		case 13:
 		case 14:
+		case 16:
+		case 17:
 			dragcoefficient_input = basalelement->GetInput(FrictionCEnum); _assert_(dragcoefficient_input);
 			break;
 		default:
@@ -2514,6 +2516,8 @@ void           AdjointHorizAnalysis::GradientJDragFS(Element* element,Vector<Iss
 		case 2:
 		case 11:
 		case 14:
+		case 16:
+		case 17:
 			dragcoeff_input = element->GetInput(FrictionCEnum); _assert_(dragcoeff_input);
 			break;
 		default:
@@ -2624,6 +2628,8 @@ void           AdjointHorizAnalysis::GradientJDragHO(Element* element,Vector<Iss
 		case 2:
 		case 11:
 		case 14:
+		case 16:
+		case 17:
 			dragcoeff_input = element->GetInput(FrictionCEnum); _assert_(dragcoeff_input);
 			break;
 		default:
@@ -2746,6 +2752,8 @@ void           AdjointHorizAnalysis::GradientJDragMOLHO(Element* element,Vector<
 		case 2:
 		case 11:
 		case 14:
+		case 16:
+		case 17:
 			dragcoeff_input = basalelement->GetInput(FrictionCEnum); _assert_(dragcoeff_input);
 			break;
 		default:
@@ -2866,6 +2874,8 @@ void           AdjointHorizAnalysis::GradientJDragSSA(Element* element,Vector<Is
 		case 11:
 		case 13:
 		case 14:
+		case 16:
+		case 17:
 			dragcoeff_input = basalelement->GetInput(FrictionCEnum); _assert_(dragcoeff_input);
 			break;
 		default:
