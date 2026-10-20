@@ -106,7 +106,7 @@ classdef hydrologyglads
 			%Other
 			md = checkfield(md,'fieldname','hydrology.spcphi','Inf',1,'timeseries',1);
 			md = checkfield(md,'fieldname','hydrology.englacial_void_ratio','size',[md.mesh.numberofvertices 1],'>=',0,'NaN',1,'Inf',1);
-			md = checkfield(md,'fieldname','hydrology.moulin_input','>=',0,'timeseries',1,'NaN',1,'Inf',1);
+			md = checkfield(md,'fieldname','hydrology.moulin_input','timeseries',1,'NaN',1,'Inf',1); % no sign constraint: negative input = extraction (AOH)
 			md = checkfield(md,'fieldname','hydrology.neumannflux','timeseries',1,'NaN',1,'Inf',1);
 			md = checkfield(md,'fieldname','hydrology.requested_outputs','stringrow',1);
 			md = checkfield(md,'fieldname','hydrology.melt_flag','numel',[1],'values',[0 1 2]);
