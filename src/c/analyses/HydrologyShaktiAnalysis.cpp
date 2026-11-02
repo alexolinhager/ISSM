@@ -224,6 +224,8 @@ ElementMatrix* HydrologyShaktiAnalysis::CreateKMatrix(Element* element){/*{{{*/
 	basalelement->FindParam(&rho_water,MaterialsRhoFreshwaterEnum);
 	basalelement->FindParam(&rho_ice,MaterialsRhoIceEnum);
 	basalelement->FindParam(&g,ConstantsGEnum);
+	IssmDouble gap_height_min = basalelement->FindParam(HydrologyGapHeightMinEnum);
+	IssmDouble gap_height_max = basalelement->FindParam(HydrologyGapHeightMaxEnum);
 	Input* B_input = basalelement->GetInput(MaterialsRheologyBEnum);      _assert_(B_input);
 	Input* n_input = basalelement->GetInput(MaterialsRheologyNEnum);      _assert_(n_input);
 	Input* gap_input = basalelement->GetInput(HydrologyGapHeightEnum);    _assert_(gap_input);
@@ -256,8 +258,13 @@ ElementMatrix* HydrologyShaktiAnalysis::CreateKMatrix(Element* element){/*{{{*/
 		IssmDouble pressure_water = rho_water*g*(head-bed);
 		if(pressure_water>pressure_ice) pressure_water = pressure_ice;
 
+		/*Creep closure is linearized in head here (and completed in CreatePVector), except where the gap sits on one of its
+		 * bounds: UpdateGapHeight holds it there, so the closure term is then explicit and bounded (see CreatePVector)*/
+		IssmDouble closure_lin = A*(n)*(pow(fabs(pressure_ice-pressure_water),(n-1))*rho_water*g)*gap;
+		if(gap<=gap_height_min || gap>=gap_height_max) closure_lin = 0.;
+
 		IssmDouble factor = conductivity*gauss->weight*Jdet;
-		IssmDouble factor2 = gauss->weight*Jdet*storage/dt + gauss->weight*Jdet*A*(n)*(pow(fabs(pressure_ice-pressure_water),(n-1))*rho_water*g)*gap;
+		IssmDouble factor2 = gauss->weight*Jdet*storage/dt + gauss->weight*Jdet*closure_lin;
 		for(int i=0;i<numnodes;i++){
 			for(int j=0;j<numnodes;j++){
 				Ke->values[i*numnodes+j] += factor*(dbasis[0*numnodes+i]*dbasis[0*numnodes+j] + dbasis[1*numnodes+i]*dbasis[1*numnodes+j])
@@ -303,6 +310,8 @@ ElementVector* HydrologyShaktiAnalysis::CreatePVector(Element* element){/*{{{*/
 	IssmDouble  g               = basalelement->FindParam(ConstantsGEnum);
 	IssmDouble  rho_ice         = basalelement->FindParam(MaterialsRhoIceEnum);
 	IssmDouble  rho_water       = basalelement->FindParam(MaterialsRhoFreshwaterEnum);
+	IssmDouble  gap_height_min  = basalelement->FindParam(HydrologyGapHeightMinEnum);
+	IssmDouble  gap_height_max  = basalelement->FindParam(HydrologyGapHeightMaxEnum);
 	Input* geothermalflux_input = basalelement->GetInput(BasalforcingsGeothermalfluxEnum);_assert_(geothermalflux_input);
 	Input* head_input           = basalelement->GetInput(HydrologyHeadEnum);              _assert_(head_input);
 	Input* gap_input            = basalelement->GetInput(HydrologyGapHeightEnum);         _assert_(gap_input);
@@ -388,10 +397,26 @@ ElementVector* HydrologyShaktiAnalysis::CreatePVector(Element* element){/*{{{*/
 			_error_("Not implemented yet.");
 		}
 
+		/*Water displaced by creep closure. Where the gap sits on one of its bounds, UpdateGapHeight holds it there, so the
+		 * closure can only displace the water that melt and sliding open up: the term is then explicit and bounded by the
+		 * opening rate. Otherwise a gap stuck on gap_height_min keeps releasing water it no longer has (mass is created
+		 * at a rate A N^n gap_height_min per unit area, which is large under a high effective pressure).*/
+		IssmDouble opening = meltrate/rho_ice + beta*sqrt(vx*vx+vy*vy);
+		IssmDouble closure;
+		if(gap<=gap_height_min || gap>=gap_height_max){
+			closure = A*pow(fabs(pressure_ice - pressure_water),n-1)*(pressure_ice - pressure_water)*gap;
+			if(gap<=gap_height_min && closure>opening) closure = opening;
+			if(gap>=gap_height_max && closure<opening) closure = opening;
+		}
+		else{
+			/*implicit part (n A N^(n-1) rho_w g gap * head) is in CreateKMatrix*/
+			closure = A*pow(fabs(pressure_ice - pressure_water),n-1)*(pressure_ice + rho_water*g*bed)*gap
+			  +(n-1)*A*pow(fabs(pressure_ice - pressure_water),n-1)*(rho_water*g*head)*gap;
+		}
+
 		IssmDouble factor = Jdet*gauss->weight*
 		 (meltrate*(1/rho_water-1/rho_ice)
-		  +A*pow(fabs(pressure_ice - pressure_water),n-1)*(pressure_ice + rho_water*g*bed)*gap
-		  +(n-1)*A*pow(fabs(pressure_ice - pressure_water),n-1)*(rho_water*g*head)*gap
+		  +closure
 		  -beta*sqrt(vx*vx+vy*vy)
 		  +ieb
 		  +storage*head_old/dt);
