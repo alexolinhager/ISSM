@@ -83,12 +83,15 @@ class frictionhydrologyschoof(object):
         md = checkfield(md, 'fieldname', 'friction.lambd', 'numel', [1], '>=', 0., '<=', 1.)
         md = checkfield(md, 'fieldname', 'friction.effective_pressure_limit', 'numel', [1], '>=', 0)
         md = checkfield(md, 'fieldname', 'friction.coupling', 'numel', [1], 'values', [0:4])
-        md = checkfield(md, 'fieldname', 'friction.rheology_A', 'NaN', 1, 'Inf', 1, 'timeseries', 1, '>', 0.)
-        md = checkfield(md, 'fieldname', 'friction.bump_height', 'NaN', 1, 'Inf', 1, 'timeseries', 1, '>', 0.)
-        md = checkfield(md, 'fieldname', 'friction.bump_spacing', 'NaN', 1, 'Inf', 1, 'timeseries', 1, '>', 0.)
+        # lambd = 0 depends on N only: the cavity inputs are not used (nor loaded), any hydrology model works
+        if self.lambd != 0:
+            md = checkfield(md, 'fieldname', 'friction.rheology_A', 'NaN', 1, 'Inf', 1, 'timeseries', 1, '>', 0.)
+            md = checkfield(md, 'fieldname', 'friction.bump_height', 'NaN', 1, 'Inf', 1, 'timeseries', 1, '>', 0.)
+            md = checkfield(md, 'fieldname', 'friction.bump_spacing', 'NaN', 1, 'Inf', 1, 'timeseries', 1, '>', 0.)
         if self.coupling in [3, 4]:
             md = checkfield(md, 'fieldname', 'friction.effective_pressure', 'NaN', 1, 'Inf', 1, 'timeseries', 1)
-            md = checkfield(md, 'fieldname', 'friction.sheet_thickness', 'NaN', 1, 'Inf', 1, 'timeseries', 1)
+            if self.lambd != 0:
+                md = checkfield(md, 'fieldname', 'friction.sheet_thickness', 'NaN', 1, 'Inf', 1, 'timeseries', 1)
         return md
     # }}}
     def marshall(self, prefix, md, fid):  # {{{

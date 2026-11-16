@@ -342,6 +342,23 @@ void Friction::GetAlphaHydrologySchoofComplement(IssmDouble* palpha_complement, 
 	element->parameters->FindParam(&coupled_flag,FrictionCouplingEnum);
 	element->GetInputValue(&m,gauss,FrictionMEnum);
 	zeta = element->FindParam(FrictionZetaEnum);
+
+	/*lambda = 0: tildeh = h_N and A l_r cancel, the law depends on N only (pressure formulation):
+	 * alpha_complement = |u_b|^(m-1) / (1 + (zeta/N)^(1/m) |u_b|)^m
+	 * The sheet, bump and rheology inputs are not loaded in this case (any hydrology model works)*/
+	if(element->FindParam(FrictionLambdaEnum) == 0.){
+		IssmDouble Neff = EffectivePressure(gauss);
+		IssmDouble vmag = VelMag(gauss);
+		if(zeta == 0.)
+		 alpha_complement = pow(vmag,m-1.);
+		else if((vmag==0.) || (Neff<=0.))
+		 alpha_complement = 0.;
+		else
+		 alpha_complement = pow(vmag,m-1.)*pow(1.+pow(zeta/Neff,1./m)*vmag,-m);
+		*palpha_complement=alpha_complement;
+		return;
+	}
+
 	if(coupled_flag == 3){
 		element->GetInputValue(&hr,gauss,FrictionBumpHeightEnum);
 		element->GetInputValue(&lr,gauss,FrictionBumpSpacingEnum);
@@ -1223,6 +1240,24 @@ void Friction::GetAlpha2HydrologySchoof(IssmDouble* palpha2, Gauss* gauss){/*{{{
 	element->GetInputValue(&m,gauss,FrictionMEnum);
 	zeta = element->FindParam(FrictionZetaEnum);
 	element->GetInputValue(&C,gauss,FrictionCEnum);
+
+	/*lambda = 0: tildeh = h_N and A l_r cancel, the law depends on N only (pressure formulation):
+	 * alpha2 = C^2 |u_b|^(m-1) / (1 + (zeta/N)^(1/m) |u_b|)^m
+	 * Evaluated directly: the cavity branch below needs the sheet thickness, h_r > 0 and h < h_r even when
+	 * lambda = 0 weights it out (NaN otherwise), and its inputs are not loaded in this case*/
+	if(element->FindParam(FrictionLambdaEnum) == 0.){
+		IssmDouble Neff = EffectivePressure(gauss);
+		ub = VelMag(gauss);
+		if(zeta == 0.)
+		 alpha2 = C*C*pow(ub,m-1.);
+		else if((ub<1e-10) || (Neff<=0.))
+		 alpha2 = 0.;
+		else
+		 alpha2 = C*C*pow(ub,m-1.) / pow(1.+pow(zeta/Neff,1./m)*ub,m);
+		*palpha2=alpha2;
+		return;
+	}
+
 	if(coupled_flag == 3){
 		element->GetInputValue(&A,gauss,FrictionRheologyAEnum);
 		element->GetInputValue(&hr,gauss,FrictionBumpHeightEnum);
@@ -1717,21 +1752,29 @@ void FrictionUpdateInputs(Elements* elements,Inputs* inputs,IoModel* iomodel){/*
 			iomodel->FetchDataToInput(inputs,elements,"md.friction.m",FrictionMEnum);
 			iomodel->FetchDataToInput(inputs,elements,"md.friction.K",FrictionKEnum);
 			break;
-		case 16:
+		case 16:{
+			/*lambda = 0 needs N only: no sheet, bump or rheology inputs (hydrology models other than GlaDS have none)*/
+			IssmDouble lambda;
 			iomodel->FindConstant(&frictioncoupling,"md.friction.coupling");
+			iomodel->FindConstant(&lambda,"md.friction.lambd");
 			iomodel->FetchDataToInput(inputs,elements,"md.friction.m",FrictionMEnum);
 			iomodel->FetchDataToInput(inputs,elements,"md.friction.C",FrictionCEnum);
-			iomodel->FetchDataToInput(inputs,elements,"md.friction.rheology_A",FrictionRheologyAEnum);
-			iomodel->FetchDataToInput(inputs,elements,"md.friction.bump_height",FrictionBumpHeightEnum);
-			iomodel->FetchDataToInput(inputs,elements,"md.friction.bump_spacing",FrictionBumpSpacingEnum);
+			if(lambda!=0.){
+				iomodel->FetchDataToInput(inputs,elements,"md.friction.rheology_A",FrictionRheologyAEnum);
+				iomodel->FetchDataToInput(inputs,elements,"md.friction.bump_height",FrictionBumpHeightEnum);
+				iomodel->FetchDataToInput(inputs,elements,"md.friction.bump_spacing",FrictionBumpSpacingEnum);
+			}
 			if(frictioncoupling==3){
 				iomodel->FetchDataToInput(inputs,elements,"md.friction.effective_pressure",FrictionEffectivePressureEnum);
-				iomodel->FetchDataToInput(inputs,elements,"md.friction.sheet_thickness",FrictionSheetThicknessEnum);
+				if(lambda!=0.) iomodel->FetchDataToInput(inputs,elements,"md.friction.sheet_thickness",FrictionSheetThicknessEnum);
 			}else if(frictioncoupling==4){
 				iomodel->FetchDataToInput(inputs,elements,"md.friction.effective_pressure",EffectivePressureEnum);
-				iomodel->FetchDataToInput(inputs,elements,"md.initialization.watercolumn",HydrologySheetThicknessEnum);
-				iomodel->FetchDataToInput(inputs,elements,"md.hydrology.rheology_B_base",HydrologyRheologyBBaseEnum);
-				iomodel->FetchDataToInput(inputs,elements,"md.hydrology.bump_height",HydrologyBumpHeightEnum);
+				if(lambda!=0.){
+					iomodel->FetchDataToInput(inputs,elements,"md.initialization.watercolumn",HydrologySheetThicknessEnum);
+					iomodel->FetchDataToInput(inputs,elements,"md.hydrology.rheology_B_base",HydrologyRheologyBBaseEnum);
+					iomodel->FetchDataToInput(inputs,elements,"md.hydrology.bump_height",HydrologyBumpHeightEnum);
+				}
+			}
 			}
 			break;
 		case 17:
@@ -1842,7 +1885,11 @@ void FrictionUpdateParameters(Parameters* parameters,IoModel* iomodel){/*{{{*/
 			parameters->AddObject(iomodel->CopyConstantObject("md.friction.effective_pressure_limit",FrictionEffectivePressureLimitEnum));
 			parameters->AddObject(iomodel->CopyConstantObject("md.friction.lambd",FrictionLambdaEnum));
 			parameters->AddObject(iomodel->CopyConstantObject("md.friction.zeta",FrictionZetaEnum));
-			if(frictioncoupling==4) parameters->AddObject(iomodel->CopyConstantObject("md.hydrology.cavity_spacing",HydrologyCavitySpacingEnum));
+			{
+				IssmDouble lambda;
+				iomodel->FindConstant(&lambda,"md.friction.lambd");
+				if(frictioncoupling==4 && lambda!=0.) parameters->AddObject(iomodel->CopyConstantObject("md.hydrology.cavity_spacing",HydrologyCavitySpacingEnum));
+			}
 			break;
 		case 17:
 			iomodel->FindConstant(&frictioncoupling,"md.friction.coupling");
